@@ -1,8 +1,75 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Scanner } from "@yudiel/react-qr-scanner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+const SuccessAnimation = () => {
+  return (
+    <div className="relative w-6 h-6 mr-2">
+      <svg
+        className="absolute inset-0 w-full h-full"
+        viewBox="0 0 100 100"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle 
+          cx="50" 
+          cy="50" 
+          r="45" 
+          fill="none" 
+          stroke="#10B981" 
+          strokeWidth="6"
+          strokeDasharray="283"
+          strokeDashoffset="283"
+          className="animate-draw-circle"
+        />
+        <path
+          d="M30,55 L45,70 L70,35"
+          fill="none"
+          stroke="#10B981"
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeDasharray="60"
+          strokeDashoffset="60"
+          className="animate-draw-check"
+        />
+      </svg>
+    </div>
+  );
+};
+
+const DuplicateAnimation = () => {
+  return (
+    <div className="relative w-6 h-6 mr-2">
+      <svg
+        className="absolute inset-0 w-full h-full"
+        viewBox="0 0 100 100"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle 
+          cx="50" 
+          cy="50" 
+          r="45" 
+          fill="none" 
+          stroke="#F59E0B" 
+          strokeWidth="6"
+          strokeDasharray="283"
+          strokeDashoffset="283"
+          className="animate-draw-circle"
+        />
+        <path
+          d="M30,50 L70,50 M50,30 L50,70"
+          fill="none"
+          stroke="#F59E0B"
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeDasharray="80"
+          strokeDashoffset="80"
+          className="animate-draw-x"
+        />
+      </svg>
+    </div>
+  );
+};
 
 const Home = () => {
   const { toast } = useToast();
@@ -10,13 +77,22 @@ const Home = () => {
   const [scanning, setScanning] = useState(false);
   const [scanHistory, setScanHistory] = useState([]);
   const [scanMode, setScanMode] = useState(null); 
-
- 
+  const [scanMessage, setScanMessage] = useState(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+    const timeoutRef = useRef(null);
+  
   useEffect(() => {
     const savedHistory = localStorage.getItem('scanHistory');
     if (savedHistory) {
       setScanHistory(JSON.parse(savedHistory));
     }
+    
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
   }, []);
 
 
@@ -28,62 +104,95 @@ const Home = () => {
     if (detectedCodes && detectedCodes.length > 0) {
       const result = detectedCodes[0].rawValue;
       setScanResult(result);
-      
-     
-      const newScan = {
-        id: Date.now(),
-        result: result,
-        timestamp: new Date().toLocaleString()
-      };
-      setScanHistory(prev => [newScan, ...prev]);
-      
+      setShowFeedback(true);
    
+      setScanHistory(prevHistory => {
+        const isDuplicateScan = prevHistory.some(scan => scan.result === result);
+        setIsDuplicate(isDuplicateScan);
+        
+        if (!isDuplicateScan) {
+          const newScan = {
+            id: Date.now(),
+            result: result,
+            timestamp: new Date().toLocaleString()
+          };
+          setScanMessage(`Scan Successful: ${result}`);
+          return [newScan, ...prevHistory];
+        } else {
+          setScanMessage('Duplicate entry detected');
+        
+          return prevHistory;
+        }
+      });
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      
+    
+      timeoutRef.current = setTimeout(() => {
+        setShowFeedback(false);
+      }, 1200);
+      
       if (scanMode === 'single') {
         setScanning(false);
       }
-      
-      toast({
-        title: "Scan Successful",
-        description: `QR Code detected: ${result}`,
-        className: "bg-blue-100 text-blue-800",
-      });
     }
   };
 
   const handleError = (error) => {
     console.error(error);
-    toast({
-      title: "Scan Error",
-      description: error.message || "Failed to scan QR code",
-      variant: "destructive",
-    });
+    setScanMessage(`Scan Error: ${error.message || "Failed to scan QR code"}`);
+    setShowFeedback(true);
+    setTimeout(() => {
+      setShowFeedback(false);
+    }, 1200);
   };
 
   const clearAllResults = () => {
     setScanHistory([]);
     setScanResult(null);
-    toast({
-      title: "Cleared",
-      description: "All scan history has been cleared",
-      className: "bg-blue-100 text-blue-800",
-    });
+    setScanMessage(null);
+    setIsDuplicate(false);
+    setShowFeedback(false);
   };
 
   const startSingleScan = () => {
     setScanMode('single');
     setScanning(true);
+    setScanMessage('Point your camera at a QR code to scan it (will close after scan)');
+    setIsDuplicate(false);
+    setScanResult(null);
+    setShowFeedback(false);
+   
+     if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(() => {
+      setShowFeedback(false);
+    }, 300000);
   };
 
   const startMultiScan = () => {
     setScanMode('multi');
     setScanning(true);
+    setScanMessage('Point your camera at QR codes to scan them continuously');
+    setIsDuplicate(false);
+    setScanResult(null);
+    setShowFeedback(false);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(() => {
+      setShowFeedback(false);
+    }, 300000);
   };
 
   const stopScanning = () => {
     setScanning(false);
     setScanMode(null);
+    setIsDuplicate(false);
+    setShowFeedback(false);
   };
-
   const barcodeFormats = [
     "qr_code",
     "code_128",
@@ -99,6 +208,60 @@ const Home = () => {
 
   return (
     <div className="w-full p-4 relative overflow-hidden min-h-screen ">
+       <style>
+        {`
+          @keyframes draw-circle {
+            to {
+              stroke-dashoffset: 0;
+            }
+          }
+          
+          @keyframes draw-check {
+            0%, 30% {
+              stroke-dashoffset: 60;
+            }
+            100% {
+              stroke-dashoffset: 0;
+            }
+          }
+          
+          @keyframes draw-x {
+            0%, 30% {
+              stroke-dashoffset: 80;
+            }
+            100% {
+              stroke-dashoffset: 0;
+            }
+          }
+          
+          .animate-draw-circle {
+            animation: draw-circle 0.5s ease-out forwards;
+          }
+          
+          .animate-draw-check {
+            animation: draw-check 0.8s ease-out forwards;
+          }
+          
+          .animate-draw-x {
+            animation: draw-x 0.8s ease-out forwards;
+          }
+          
+          .scale-in {
+            animation: scale-in 0.3s ease-out forwards;
+          }
+          
+          @keyframes scale-in {
+            from {
+              transform: scale(0);
+              opacity: 0;
+            }
+            to {
+              transform: scale(1);
+              opacity: 1;
+            }
+          }
+        `}
+      </style>
       <div className="absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-blue-50/20 to-indigo-50/20">
           <div 
@@ -114,17 +277,17 @@ const Home = () => {
       
       <div className='sm:hidden'>
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold text-center mb-4 text-blue-800">QR Code Scanner</h1>
+          <h1 className="text-3xl font-bold text-center mb-4 text-blue-800">Event Entry</h1>
           
-          <Card className="mb-2 bg-white/95 backdrop-blur-sm border-blue-300 shadow-lg hover:shadow-blue-100/50 transition-shadow">
+          <Card className={`mb-2 ${showFeedback ? (isDuplicate ? "bg-yellow-200/95" : "bg-green-200") : "bg-white/95"}   backdrop-blur-sm border-blue-300 shadow-lg hover:shadow-blue-100/50 transition-shadow`}>
             <CardContent className="p-6">
               <div className="flex flex-col items-center">
                 {!scanning ? (
                   <>
                     <div className="text-center mb-6">
-                      <p className="text-blue-700 mb-4">
+                    <p className="text-blue-700 mb-4">
                         {scanResult 
-                          ? `Last scanned code: ${scanResult}`
+                          ? `Last scanned code: ${scanResult}${isDuplicate ? ' (Duplicate)' : ''}`
                           : "Choose a scanning mode below"}
                       </p>
                       <div className="flex gap-4 justify-center">
@@ -193,15 +356,57 @@ const Home = () => {
                             height: "auto",
                             objectFit: "cover",
                           },
+                       
+                          
+                     
+                        
                         }}
+                      
                       />
                     </div>
                     
-                    <p className="text-center mt-4 text-blue-600">
-                      {scanMode === 'single' 
-                        ? "Point your camera at a QR code to scan it (will close after scan)"
-                        : "Point your camera at QR codes to scan them continuously"}
-                    </p>
+                    {/* {scanMessage && (
+                      <p className={`text-center mt-4 ${showFeedback ? (isDuplicate ? 'text-yellow-600' : 'text-green-600') : 'text-blue-600'}`}>
+                        {scanMessage}
+                      </p>
+                    )} */}
+            
+   {(showFeedback || (scanning && scanMessage)) && (
+                <div className={`mt-2 ${
+                  isDuplicate ? 'bg-yellow-100' : 
+                  scanResult ? 'bg-green-100' : 'bg-blue-100'
+                } rounded-lg shadow-lg p-2 text-sm flex items-center border ${
+                  isDuplicate ? 'border-yellow-300' : 
+                  scanResult ? 'border-green-300' : 'border-blue-300'
+                } transition-all duration-300 scale-in`}>
+                  {scanResult ? (
+                    isDuplicate ? <DuplicateAnimation /> : <SuccessAnimation />
+                  ) : (
+                    <div className="w-6 h-6 mr-2 flex items-center justify-center">
+                      <svg
+                        className="w-4 h-4 text-blue-600"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    </div>
+                  )}
+                  <p className={`ml-2 font-medium ${
+                    isDuplicate ? 'text-yellow-800' : 
+                    scanResult ? 'text-green-800' : 'text-blue-800'
+                  }`}>
+                    {scanMessage}
+                  </p>
+                </div>
+              )}
+      
                   </div>
                 )}
               </div>
@@ -242,7 +447,7 @@ const Home = () => {
           <div className="text-center text-sm text-blue-800/70">
             <p>Powered by @Ag Solutions</p>
             <div className="text-xs text-blue-800/50 mt-2">
-              Copyright © {new Date().getFullYear()} | Siga Scanner App
+              Copyright © {new Date().getFullYear()} | Scanner App
             </div>
           </div>
         </div>
@@ -261,3 +466,5 @@ const Home = () => {
 };
 
 export default Home;
+
+//sajid
